@@ -1,3 +1,5 @@
+open! Core
+
 type t = Term.t list
 
 type classified = {const: t; linear: t; quad: t}
@@ -23,20 +25,21 @@ let binary name = [Term.var ~integer:true ~lb:Float.zero ~ub:Float.one name]
 
 let range ?(integer = false) ?(lb = Float.zero) ?(ub = Float.infinity)
     ?(start = 0) stop name =
-  Array.init (stop - start) (fun i ->
-      var ~integer ~lb ~ub (String.concat "_" [name; string_of_int (start + i)]))
+  Array.init (stop - start) ~f:(fun i ->
+      var ~integer ~lb ~ub
+        (String.concat ~sep:"_" [name; string_of_int (start + i)]) )
 
 let range2 ?(integer = false) ?(lb = Float.zero) ?(ub = Float.infinity)
     ?(start0 = 0) ?(start1 = 0) stop0 stop1 name =
-  Array.init (stop0 - start0) (fun i ->
+  Array.init (stop0 - start0) ~f:(fun i ->
       range ~integer ~lb ~ub ~start:start1 stop1
-        (String.concat "_" [name; string_of_int (start0 + i)]))
+        (String.concat ~sep:"_" [name; string_of_int (start0 + i)]) )
 
 let range3 ?(integer = false) ?(lb = Float.zero) ?(ub = Float.infinity)
     ?(start0 = 0) ?(start1 = 0) ?(start2 = 0) stop0 stop1 stop2 name =
-  Array.init (stop0 - start0) (fun i ->
+  Array.init (stop0 - start0) ~f:(fun i ->
       range2 ~integer ~lb ~ub ~start0:start1 ~start1:start2 stop1 stop2
-        (String.concat "_" [name; string_of_int (start0 + i)]))
+        (String.concat ~sep:"_" [name; string_of_int (start0 + i)]) )
 
 let rangeb = range ~integer:true ~lb:Float.zero ~ub:Float.one
 
@@ -45,33 +48,33 @@ let range2b = range2 ~integer:true ~lb:Float.zero ~ub:Float.one
 let range3b = range3 ~integer:true ~lb:Float.zero ~ub:Float.one
 
 let rangev ?(integer = false) ?(lb = [||]) ?(ub = [||]) ?(start = 0) stop name =
-  Array.init (stop - start) (fun i ->
+  Array.init (stop - start) ~f:(fun i ->
       let l = if Array.length lb > 0 then lb.(i) else Float.zero in
       let u = if Array.length ub > 0 then ub.(i) else Float.infinity in
       var ~integer ~lb:l ~ub:u
-        (String.concat "_" [name; string_of_int (start + i)]))
+        (String.concat ~sep:"_" [name; string_of_int (start + i)]) )
 
 let range2v ?(integer = false) ?(lb = [||]) ?(ub = [||]) ?(start0 = 0)
     ?(start1 = 0) stop0 stop1 name =
-  Array.init (stop0 - start0) (fun i ->
+  Array.init (stop0 - start0) ~f:(fun i ->
       let l = if Array.length lb > 0 then lb.(i) else [||] in
       let u = if Array.length ub > 0 then ub.(i) else [||] in
       rangev ~integer ~lb:l ~ub:u ~start:start1 stop1
-        (String.concat "_" [name; string_of_int (start0 + i)]))
+        (String.concat ~sep:"_" [name; string_of_int (start0 + i)]) )
 
 let range3v ?(integer = false) ?(lb = [||]) ?(ub = [||]) ?(start0 = 0)
     ?(start1 = 0) ?(start2 = 0) stop0 stop1 stop2 name =
-  Array.init (stop0 - start0) (fun i ->
+  Array.init (stop0 - start0) ~f:(fun i ->
       let l = if Array.length lb > 0 then lb.(i) else [||] in
       let u = if Array.length ub > 0 then ub.(i) else [||] in
       range2v ~integer ~lb:l ~ub:u ~start0:start1 ~start1:start2 stop1 stop2
-        (String.concat "_" [name; string_of_int (start0 + i)]))
+        (String.concat ~sep:"_" [name; string_of_int (start0 + i)]) )
 
 let concat a = List.concat (Array.to_list a)
 
 let concat_list = List.concat
 
-let of_float_array fa = concat (Array.map c fa)
+let of_float_array fa = concat (Array.map ~f:c fa)
 
 let of_term_list = Fun.id
 
@@ -87,7 +90,7 @@ let zero = []
 
 let one = [Term.one]
 
-let sort p = List.sort Term.compare (List.map Term.sort p)
+let sort p = List.sort ~compare:Term.compare (Core.List.map ~f:Term.sort p)
 
 let rec compare p0 p1 =
   match (p0, p1) with
@@ -102,8 +105,8 @@ let rec compare p0 p1 =
       if c <> 0 then c else compare rest0 rest1
 
 let partition poly =
-  List.partition
-    (fun t -> match t with Term.Const _ -> false | _ -> true)
+  List.partition_tf
+    ~f:(fun t -> match t with Term.Const _ -> false | _ -> true)
     poly
 
 let classify poly =
@@ -125,13 +128,15 @@ let classify_by var poly =
         {const= List.rev cs; linear= List.rev ls; quad= List.rev qs}
     | (Term.Const _ as c) :: rest ->
         classify_ (c :: cs) ls qs rest
-    | (Term.Linear (_, v) as l) :: rest when v = var ->
+    | (Term.Linear (_, v) as l) :: rest when Stdlib.( = ) v var ->
         classify_ cs (l :: ls) qs rest
     | (Term.Linear _ as c) :: rest ->
         classify_ (c :: cs) ls qs rest
-    | (Term.Quad (_, v0, v1) as q) :: rest when v0 = var && v1 = var ->
+    | (Term.Quad (_, v0, v1) as q) :: rest
+      when Stdlib.( = ) v0 var && Stdlib.( = ) v1 var ->
         classify_ cs ls (q :: qs) rest
-    | (Term.Quad (_, v0, v1) as l) :: rest when v0 = var || v1 = var ->
+    | (Term.Quad (_, v0, v1) as l) :: rest
+      when Stdlib.( = ) v0 var || Stdlib.( = ) v1 var ->
         classify_ cs (l :: ls) qs rest
     | (Term.Quad _ as c) :: rest ->
         classify_ (c :: cs) ls qs rest
@@ -151,7 +156,7 @@ let decompose poly =
   in
   decompose_ Float.zero [] [] [] [] [] poly
 
-let degree p = List.fold_left max 0 (List.map Term.degree p)
+let degree p = List.fold_left ~f:Int.max ~init:0 (List.map ~f:Term.degree p)
 
 let take_vars poly =
   let rec take vars = function
@@ -168,31 +173,32 @@ let take_vars poly =
 
 let uniq_vars poly =
   let vars = take_vars poly in
-  List.sort_uniq Var.compare_name vars
+  List.dedup_and_sort ~compare:Var.compare_name vars
 
 let linear_coeff poly var =
   let accum coeff = function
-    | Term.Linear (c, v) when v = var ->
+    | Term.Linear (c, v) when Stdlib.( = ) v var ->
         c +. coeff
     | _ ->
         coeff
   in
-  List.fold_left accum Float.zero poly
+  List.fold_left ~f:accum ~init:Float.zero poly
 
 let quad_coeff poly v0 v1 =
   let accum coeff = function
     | Term.Quad (c, vv0, vv1)
-      when (v0 = vv0 && v1 = vv1) || (v1 = vv0 && v0 = vv1) ->
+      when (Stdlib.( = ) v0 vv0 && Stdlib.( = ) v1 vv1)
+           || (Stdlib.( = ) v1 vv0 && Stdlib.( = ) v0 vv1) ->
         c +. coeff
     | _ ->
         coeff
   in
-  List.fold_left accum Float.zero poly
+  List.fold_left ~f:accum ~init:Float.zero poly
 
-let simplify ?(eps = 10. *. epsilon_float) poly =
+let simplify ?(eps = 10. *. Stdlib.epsilon_float) poly =
   let rec simplify_ const lins quads = function
     | [] ->
-        (Term.Const const :: List.rev lins) @ List.rev quads
+        (Term.Const const :: Core.List.rev lins) @ Core.List.rev quads
     | Term.Const c :: rest ->
         simplify_ (c +. const) lins quads rest
     | (Term.Linear (newc, _) as newl) :: rest ->
@@ -222,21 +228,21 @@ let simplify ?(eps = 10. *. epsilon_float) poly =
         simplify_ const lins simpl_q rest
   in
   poly |> sort |> simplify_ Float.zero [] []
-  |> List.filter (fun t -> not (Term.near_zero ~eps t))
+  |> Core.List.filter ~f:(fun t -> not (Term.near_zero ~eps t))
 
 let collision p =
   let sorted = sort p in
   let res =
     List.fold_left
-      (fun coll_term t ->
-        (fst coll_term || Term.collision (snd coll_term) t, t))
-      (false, Term.zero) sorted
+      ~f:(fun coll_term t ->
+        (fst coll_term || Term.collision (snd coll_term) t, t) )
+      ~init:(false, Term.zero) sorted
   in
   fst res
 
 let to_string ?(short = false) p =
-  let ts_string = List.map (Term.to_string ~short) in
-  String.concat " "
+  let ts_string = List.map ~f:(Term.to_string ~short) in
+  Core.String.concat ~sep:" "
     (let cp = classify p in
      match cp with
      | {const= []; linear= []; quad= []} ->
@@ -247,29 +253,30 @@ let to_string ?(short = false) p =
          ["["] @ ts_string cp.quad @ ["]"]
      | _ ->
          ts_string (cp.const @ cp.linear)
-         @ ["+"; "["] @ ts_string cp.quad @ ["]"])
+         @ ["+"; "["] @ ts_string cp.quad @ ["]"] )
 
-let neg p = List.map Term.neg p
+let neg p = Core.List.map ~f:Term.neg p
 
 let ( ~-- ) = neg
 
-let ( ++ ) = List.append
+let ( ++ ) = Core.List.append
 
 let ( -- ) pl pr = pl @ neg pr
 
 let expand pl pr =
-  List.concat (List.map (fun tl -> List.map (fun tr -> Term.mul tl tr) pr) pl)
+  List.concat
+    (List.map ~f:(fun tl -> List.map ~f:(fun tr -> Term.mul tl tr) pr) pl)
 
 let ( *~ ) = expand
 
-let dot = List.map2 Term.mul
+let dot = List.map2_exn ~f:Term.mul
 
 let ( *@ ) = dot
 
-let equiv ?(eps = 10. *. epsilon_float) pl pr =
+let equiv ?(eps = 10. *. Stdlib.epsilon_float) pl pr =
   match simplify ~eps (pl -- pr) with [] -> true | _ -> false
 
-let divt poly term = List.map (fun t -> Term.div t term) poly
+let divt poly term = List.map ~f:(fun t -> Term.div t term) poly
 
 let long_div var n d =
   let deg p =
@@ -329,42 +336,42 @@ let div n d =
 
 let ( /~ ) = div
 
-let with_bound name lb ub p = List.map (Term.with_bound name lb ub) p
+let map f = Core.List.map ~f
 
-let to_binary name p = List.map (Term.to_binary name) p
+let with_bound name lb ub p = map (Term.with_bound name lb ub) p
 
-let to_integer name p = List.map (Term.to_integer name) p
+let to_binary name p = map (Term.to_binary name) p
 
-let double_quad p = List.map Term.double_quad p
+let to_integer name p = map (Term.to_integer name) p
 
-let half_quad p = List.map Term.half_quad p
+let double_quad p = map Term.double_quad p
 
-let map = List.map
+let half_quad p = map Term.half_quad p
 
 let map_linear f =
-  List.map (fun t ->
+  Core.List.map ~f:(fun t ->
       match t with
       | Term.Linear (c, v) ->
           f c v
       | _ ->
-          failwith "non-linear term encountered")
+          failwith "non-linear term encountered" )
 
-let mapi = List.mapi
+let mapi f = Core.List.mapi ~f
 
-let iter = List.iter
+let iter f = List.iter ~f
 
 let iter_linear f =
-  List.iter (fun t -> match t with Term.Linear (c, v) -> f c v | _ -> ())
+  List.iter ~f:(fun t -> match t with Term.Linear (c, v) -> f c v | _ -> ())
 
 let iter_linear_exn f =
-  List.iter (fun t ->
+  List.iter ~f:(fun t ->
       match t with
       | Term.Linear (c, v) ->
           f c v
       | _ ->
-          failwith "non-linear term encountered")
+          failwith "non-linear term encountered" )
 
-let iteri = List.iteri
+let iteri f = List.iteri ~f
 
 let length = List.length
 

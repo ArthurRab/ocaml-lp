@@ -21,7 +21,8 @@ let simplify_sides ?(eps = 10. *. epsilon_float) lhs rhs =
   let vr, cr = Poly.partition rhs in
   let newl = Poly.(vl -- vr) in
   let newr = Poly.(cr -- cl) in
-  (Poly.simplify ~eps newl, Poly.to_float @@ Poly.simplify ~eps newr)
+  let r = (Poly.simplify ~eps newl, Poly.to_float @@ Poly.simplify ~eps newr) in
+  r
 
 let take_vars = function
   | Eq (_, lhs, _) | Ineq (_, lhs, _) ->

@@ -1,5 +1,5 @@
 (* solve LP and MILP using glpk *)
-
+open! Core
 module C = Ctypes
 module T = Lp_glpk_types.M
 module B = Lp_glpk_ffi.M
@@ -7,9 +7,9 @@ open Lp
 
 let make_pmap vars f =
   List.fold_left
-    (fun m (k, v) -> Lp.PMap.add k v m)
-    Lp.PMap.empty
-    (List.mapi (fun i v -> (Poly.of_var v, f i)) vars)
+    ~f:(fun m (k, v) -> Lp.PMap.add k v m)
+    ~init:Lp.PMap.empty
+    (List.mapi ~f:(fun i v -> (Poly.of_var v, f i)) vars)
 
 (* NOTE on array indexing
  * glpk's API treats Carray as 1-origin! Conventions in C are:
@@ -17,11 +17,13 @@ let make_pmap vars f =
  * - ignore zero-th element a[0]. *)
 
 (* get 1-origin index of v in vars (Var.t list) *)
-let rec idx_var (v : Var.t) = function
-  | [] ->
+let idx_var (v : Var.t) l =
+  let indx = List.findi l ~f:(fun _ v' -> Stdlib.( = ) v' v) in
+  match indx with
+  | None ->
       failwith (Printf.sprintf "cannot find %s in vars" v.name)
-  | hd :: rest ->
-      if hd = v then 1 else 1 + idx_var v rest
+  | Some (indx, _) ->
+      indx + 1
 
 let set_obj prob vars obj =
   if Objective.is_max obj then B.set_obj_dir prob T.Dir.MAX
@@ -37,13 +39,13 @@ let set_cnstr prob vars i cnstr =
     let acoeffs = C.CArray.make C.double (1 + Poly.length poly) in
     let () =
       List.iteri
-        (fun i v -> C.CArray.set aindices i v)
+        ~f:(fun i v -> C.CArray.set aindices i v)
         (0 :: Poly.map_linear (fun _ v -> idx_var v vars) poly)
       (* 0-th element is dummy *)
     in
     let () =
       List.iteri
-        (fun i v -> C.CArray.set acoeffs i v)
+        ~f:(fun i v -> C.CArray.set acoeffs i v)
         (0.0 :: Poly.take_linear_coeffs poly)
       (* 0-th element is dummy *)
     in
@@ -56,21 +58,25 @@ let set_cnstr prob vars i cnstr =
   else B.set_row_bnds prob ri T.Bnd.UP 0.0 rhs ;
   coeff lhs
 
-let set_cnstrs prob vars = List.iteri (set_cnstr prob vars)
+let set_cnstrs prob vars = List.iteri ~f:(set_cnstr prob vars)
+
+let ( =. ) = Float.equal
+
+let ( <>. ) = Float.( <> )
 
 module Simplex = struct
   let set_cols prob =
-    List.iteri (fun j var ->
+    List.iteri ~f:(fun j var ->
         let cj = 1 + j in
         match var with
         | {Var.attr= Var.Continuous (lb, ub); _} ->
-            if lb = Float.neg_infinity && ub = Float.infinity then
+            if lb =. Float.neg_infinity && ub =. Float.infinity then
               B.set_col_bnds prob cj T.Bnd.FR 0.0 0.0
-            else if ub = Float.infinity then
+            else if ub =. Float.infinity then
               B.set_col_bnds prob cj T.Bnd.LO lb 0.0
-            else if lb = Float.neg_infinity then
+            else if lb =. Float.neg_infinity then
               B.set_col_bnds prob cj T.Bnd.UP 0.0 ub
-            else if lb <> ub then B.set_col_bnds prob cj T.Bnd.DB lb ub
+            else if lb <>. ub then B.set_col_bnds prob cj T.Bnd.DB lb ub
             else B.set_col_bnds prob cj T.Bnd.FX lb ub
         | _ ->
             failwith "set_cols: integer variable found" )
@@ -115,15 +121,15 @@ end
 module Milp = struct
   let set_cols prob =
     let set_bounds cj lb ub =
-      if lb = Float.neg_infinity && ub = Float.infinity then
+      if lb =. Float.neg_infinity && ub =. Float.infinity then
         B.set_col_bnds prob cj T.Bnd.FR 0.0 0.0
-      else if ub = Float.infinity then B.set_col_bnds prob cj T.Bnd.LO lb 0.0
-      else if lb = Float.neg_infinity then
+      else if ub =. Float.infinity then B.set_col_bnds prob cj T.Bnd.LO lb 0.0
+      else if lb =. Float.neg_infinity then
         B.set_col_bnds prob cj T.Bnd.UP 0.0 ub
-      else if lb <> ub then B.set_col_bnds prob cj T.Bnd.DB lb ub
+      else if lb <>. ub then B.set_col_bnds prob cj T.Bnd.DB lb ub
       else B.set_col_bnds prob cj T.Bnd.FX lb ub
     in
-    List.iteri (fun j var ->
+    List.iteri ~f:(fun j var ->
         let cj = 1 + j in
         match var with
         | {Var.attr= Var.Continuous (lb, ub); _} ->
@@ -136,12 +142,14 @@ module Milp = struct
             B.set_col_kind prob cj T.Vt.BV )
 
   let solve_main p =
+    print_endline "here" ;
     let obj, cnstrs = Problem.obj_cnstrs p in
     let vars = Problem.uniq_vars p in
     let nrows = List.length cnstrs in
     let ncols = List.length vars in
     let prob = B.create_prob () in
     ignore @@ B.add_rows prob nrows ;
+    print_endline "here2" ;
     ignore @@ B.add_cols prob ncols ;
     let smcp = C.make T.Smcp.t in
     let iocp = C.make T.Iocp.t in
@@ -149,9 +157,13 @@ module Milp = struct
       B.init_smcp (C.addr smcp) ;
       B.init_iocp (C.addr iocp) ;
       (* TODO set solver parameters *)
+      print_endline "here3" ;
       set_obj prob vars obj ;
+      print_endline "here3.1" ;
       set_cnstrs prob vars cnstrs ;
+      print_endline "here3.2" ;
       set_cols prob vars ;
+      print_endline "here4" ;
       let ret = B.simplex prob (C.addr smcp) in
       (* TODO handle some of non-zero return values *)
       if ret <> 0 then failwith "non-zero return value from simplex"
@@ -166,6 +178,7 @@ module Milp = struct
               | T.Stat.OPT ->
                   let obj = B.mip_obj_val prob in
                   let xs =
+                    print_endline "here5" ;
                     make_pmap vars (fun i -> B.mip_col_val prob (i + 1))
                   in
                   B.delete_prob prob ;
@@ -189,6 +202,6 @@ let solve ?(term_output = true) p =
   | Pclass.LP ->
       Simplex.solve ~term_output p
   | Pclass.MILP ->
-      Milp.solve ~term_output p
+      print_endline "here" ; Milp.solve ~term_output p
   | _ ->
       Error "glpk is only for LP or MILP"

@@ -1,4 +1,4 @@
 (library
  (name lp_glpk)
  (public_name lp-glpk)
- (libraries lp lp-glpk.ffi lp-glpk.types ctypes))
+ (libraries core lp lp-glpk.ffi lp-glpk.types ctypes))

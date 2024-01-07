@@ -37,7 +37,7 @@ module Vars = struct
   let has_integer vars =
     List.exists
       (fun x ->
-        match x with {Var.attr= Var.Continuous _; _} -> false | _ -> true)
+        match x with {Var.attr= Var.Continuous _; _} -> false | _ -> true )
       vars
 
   let to_vtype_string vars =
@@ -98,7 +98,7 @@ let take_vars p =
 
 let uniq_vars p =
   let vars = take_vars p in
-  List.sort_uniq Var.compare_name vars
+  Core.List.dedup_and_sort ~compare:Var.compare_name vars
 
 let uniq_vars_struct p =
   let vars = take_vars p in
