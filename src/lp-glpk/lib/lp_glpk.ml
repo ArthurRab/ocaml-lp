@@ -142,14 +142,12 @@ module Milp = struct
             B.set_col_kind prob cj T.Vt.BV )
 
   let solve_main p =
-    print_endline "here" ;
     let obj, cnstrs = Problem.obj_cnstrs p in
     let vars = Problem.uniq_vars p in
     let nrows = List.length cnstrs in
     let ncols = List.length vars in
     let prob = B.create_prob () in
     ignore @@ B.add_rows prob nrows ;
-    print_endline "here2" ;
     ignore @@ B.add_cols prob ncols ;
     let smcp = C.make T.Smcp.t in
     let iocp = C.make T.Iocp.t in
@@ -157,13 +155,9 @@ module Milp = struct
       B.init_smcp (C.addr smcp) ;
       B.init_iocp (C.addr iocp) ;
       (* TODO set solver parameters *)
-      print_endline "here3" ;
       set_obj prob vars obj ;
-      print_endline "here3.1" ;
       set_cnstrs prob vars cnstrs ;
-      print_endline "here3.2" ;
       set_cols prob vars ;
-      print_endline "here4" ;
       let ret = B.simplex prob (C.addr smcp) in
       (* TODO handle some of non-zero return values *)
       if ret <> 0 then failwith "non-zero return value from simplex"
@@ -178,7 +172,6 @@ module Milp = struct
               | T.Stat.OPT ->
                   let obj = B.mip_obj_val prob in
                   let xs =
-                    print_endline "here5" ;
                     make_pmap vars (fun i -> B.mip_col_val prob (i + 1))
                   in
                   B.delete_prob prob ;
@@ -202,6 +195,6 @@ let solve ?(term_output = true) p =
   | Pclass.LP ->
       Simplex.solve ~term_output p
   | Pclass.MILP ->
-      print_endline "here" ; Milp.solve ~term_output p
+      Milp.solve ~term_output p
   | _ ->
       Error "glpk is only for LP or MILP"
